@@ -1,0 +1,86 @@
+# =====================================================================
+# CÓDIGO DEFINITIVO ÍTEM F: KRIGING TRANSGAUSSIANO TEÓRICAMENTE CORRECTO
+# =====================================================================
+library(sp)
+library(gstat)
+library(fields)
+library(MASS)
+
+# 1. Cargar datos y Transformación Box-Cox
+datos <- read.csv("Santiago.csv", sep=";")
+kpi <- datos$KPI
+
+bc <- boxcox(kpi ~ 1, plotit = FALSE)
+lambda_optimo <- bc$x[which.max(bc$y)]
+if(abs(lambda_optimo) < 0.1) {
+  kpi_trans <- log(kpi)
+} else {
+  kpi_trans <- (kpi^lambda_optimo - 1) / lambda_optimo
+}
+datos$kpi_trans <- kpi_trans
+
+coords_orig <- cbind(datos$Longitud, datos$Latitud)
+coordinates(datos) <- ~Longitud+Latitud
+
+# -------------------------------------------------------------------
+# 2. AJUSTE DEL VARIOGRAMA EN LA ESCALA TRANSFORMADA (Según Ayudantía 7)
+# -------------------------------------------------------------------
+vario_trans <- variogram(kpi_trans ~ 1, datos)
+varianza_trans <- var(datos$kpi_trans)
+
+# Le damos a R un "punto de partida" razonable para que no se pierda,
+# pero R ajustará los valores reales óptimos para la escala transformada.
+v_mod_inicial <- vgm(psill = varianza_trans * 0.8, 
+                     model = "Exp", 
+                     range = 0.1, 
+                     nugget = varianza_trans * 0.2)
+
+# Aquí R encuentra el MEJOR ajuste para la escala Box-Cox
+fit1 <- fit.variogram(vario_trans, v_mod_inicial)
+
+# 3. Construir grilla de predicción 
+xx <- seq(min(coords_orig[,1]) - 0.05, max(coords_orig[,1]) + 0.05, by = 0.01)
+yy <- seq(min(coords_orig[,2]) - 0.05, max(coords_orig[,2]) + 0.05, by = 0.01)
+
+loc_to_pred <- expand.grid(Longitud = xx, Latitud = yy)
+coordinates(loc_to_pred) <- ~Longitud+Latitud
+gridded(loc_to_pred) <- TRUE
+
+# 4. Predicción Espacial: Kriging Ordinario sobre datos transformados
+pr <- krige(kpi_trans ~ 1, datos, loc_to_pred, model = fit1)
+
+# Retrotransformación a la escala original del KPI (Paso 4 de Ayudantía 7)
+if(abs(lambda_optimo) < 0.1) {
+  pred_original <- exp(pr$var1.pred + (pr$var1.var / 2))
+} else {
+  pred_original <- (pr$var1.pred * lambda_optimo + 1)^(1/lambda_optimo)
+}
+
+# ==========================================
+# 5. CREACIÓN SEGURA DE MAPAS 
+# ==========================================
+while(!is.null(dev.list())) dev.off() # Cierra gráficos atascados
+
+colour <- rainbow(100) 
+
+# --- Mapa 1: Kriging (Predicción) ---
+png("mapa_kpi_prediccion.png", width=800, height=700, res=100)
+matriz_pred <- matrix(pred_original, nrow=length(xx), ncol=length(yy))
+image.plot(xx, yy, matriz_pred, col=colour, 
+           xlab="Longitud", ylab="Latitud", main="Kriging: Predicción Espacial")
+points(coords_orig[,1], coords_orig[,2], pch=20, col="black", cex=1.5)
+dev.off()
+
+# --- Mapa 2: Varianza del Error ---
+varianza_error <- pr$var1.var
+varianza_error[varianza_error < 0] <- 0 # Seguridad numérica
+
+limites_z <- range(varianza_error, na.rm=TRUE)
+if(limites_z[5] == limites_z[6]) limites_z[6] <- limites_z[6] + 0.001
+
+png("mapa_kpi_error.png", width=800, height=700, res=100)
+matriz_mse <- matrix(varianza_error, nrow=length(xx), ncol=length(yy))
+image.plot(xx, yy, matriz_mse, col=colour, zlim=limites_z, 
+           xlab="Longitud", ylab="Latitud", main="Kriging: Varianza del Error")
+points(coords_orig[,1], coords_orig[,2], pch=20, col="black", cex=1.5)
+dev.off()
