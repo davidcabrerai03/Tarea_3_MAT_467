@@ -1,0 +1,43 @@
+# 1. Cargar los datos
+# Asegúrate de que el archivo Santiago.csv esté en el mismo directorio de trabajo
+datos <- read.csv("Santiago.csv", sep=";")
+
+# Extraemos la variable KPI
+kpi <- datos$KPI 
+
+# 2. Análisis Visual: Gráfico QQ-Plot original
+qqnorm(kpi, main="QQ-Plot: KPI Original", pch=19, col="darkgray")
+qqline(kpi, col="red", lwd=2)
+
+# 3. Análisis Formal: Test de Normalidad (Shapiro-Wilk)
+print("--- TEST DE NORMALIDAD: DATOS ORIGINALES ---")
+test_original <- shapiro.test(kpi)
+print(test_original)
+
+library(MASS)
+
+# 1. Calcular el lambda óptimo de Box-Cox
+# Ocultamos el gráfico de perfil de verosimilitud para enfocarnos en los resultados
+bc <- boxcox(kpi ~ 1, plotit = FALSE)
+lambda_optimo <- bc$x[which.max(bc$y)]
+
+print(paste("--- Lambda óptimo de Box-Cox:", round(lambda_optimo, 4), "---"))
+
+# 2. Aplicar la transformación matemáticamente
+# Si lambda es muy cercano a 0, se aplica logaritmo natural
+if(abs(lambda_optimo) < 0.1) {
+  kpi_transformado <- log(kpi)
+  print("Se aplicó transformación logarítmica Z = ln(Y)")
+} else {
+  kpi_transformado <- (kpi^lambda_optimo - 1) / lambda_optimo
+  print("Se aplicó transformación de potencia de Box-Cox")
+}
+
+# 3. Análisis Visual: Nuevo Gráfico QQ-Plot
+qqnorm(kpi_transformado, main="QQ-Plot: KPI Transformado", pch=19, col="darkgray")
+qqline(kpi_transformado, col="blue", lwd=2)
+
+# 4. Análisis Formal: Nuevo Test de Normalidad (Shapiro-Wilk)
+print("--- TEST DE NORMALIDAD: DATOS TRANSFORMADOS ---")
+test_transformado <- shapiro.test(kpi_transformado)
+print(test_transformado)
