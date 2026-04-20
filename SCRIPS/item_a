@@ -1,0 +1,41 @@
+# Leer archivo
+df <- read.csv("Santiago.csv", sep = ";", header = TRUE)
+
+# Limpiar nombres de columnas
+names(df) <- trimws(names(df))
+
+# Revisar nombres
+print(names(df))
+head(df)
+
+# Cargar librería
+library(fields)
+
+# Definir colores según KPI
+colores <- tim.colors(100)
+zcol <- colores[cut(df$KPI, breaks = 100, labels = FALSE)]
+
+# Guardar configuración gráfica actual
+op <- par(no.readonly = TRUE)
+
+# Ajustar márgenes para dejar espacio a la derecha
+par(mar = c(5, 5, 3, 7))
+
+# Graficar puntos
+plot(df$Longitud, df$Latitud,
+     pch = 19,
+     col = zcol,
+     xlab = "Longitud",
+     ylab = "Latitud",
+     main = "Puntos observados coloreados por KPI")
+
+# Agregar barra de colores a la derecha, separada del gráfico
+image.plot(legend.only = TRUE,
+           zlim = range(df$KPI, na.rm = TRUE),
+           col = colores,
+           legend.width = 1.2,
+           legend.shrink = 0.8,
+           smallplot = c(0.88, 0.92, 0.2, 0.8))
+
+# Restaurar configuración gráfica original
+par(op)
